@@ -7,7 +7,6 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  PermissionFlagsBits,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -15,12 +14,19 @@ const {
   ChannelType,
 } = require("discord.js");
 
-const TOKEN = process.env.TOKEN;
-const GUILD_ID = process.env.GUILD_ID || "1476787258815152183";
-const CLIENT_ID = process.env.CLIENT_ID;
+/* =========================
+   환경변수
+========================= */
+const RAW_TOKEN = process.env.TOKEN ?? "";
+const TOKEN = RAW_TOKEN.replace(/^Bot\s+/i, "").trim();
+const GUILD_ID = (process.env.GUILD_ID || "1476787258815152183").trim();
+const CLIENT_ID = (process.env.CLIENT_ID || "").trim();
 
 const DATA_FILE = path.join(__dirname, "organization.json");
 
+/* =========================
+   권한 / 역할 설정
+========================= */
 const SUPER_ADMIN_IDS = new Set([
   "942558158436589640",
   "1369378060557877480",
@@ -112,6 +118,9 @@ const UNIT_COMMAND_POSITIONS = {
   ],
 };
 
+/* =========================
+   표시용 설정
+========================= */
 const HQ_EMOJIS = {
   "군사경찰 사령관": "<:General:1478002425830047754>",
   "군사경찰 부사령관": "<:LieutenantGeneral:1480151141969956944>",
@@ -182,10 +191,11 @@ const EMBED2_SECTIONS = [
   ],
 ];
 
-const MANAGED_DEPT_ROLE_IDS = new Set(
-  Object.values(DEPT_ASSIGN_ROLES).flat()
-);
+const MANAGED_DEPT_ROLE_IDS = new Set(Object.values(DEPT_ASSIGN_ROLES).flat());
 
+/* =========================
+   데이터
+========================= */
 function defaultData() {
   return {
     편제: {
@@ -231,6 +241,9 @@ function saveData(data) {
 
 const store = loadData();
 
+/* =========================
+   유틸
+========================= */
 function validateEnv() {
   const missing = [];
   if (!TOKEN) missing.push("TOKEN");
@@ -240,6 +253,17 @@ function validateEnv() {
   if (missing.length) {
     console.log(`필수 환경변수가 없습니다: ${missing.join(", ")}`);
     process.exit(1);
+  }
+
+  console.log("=== 환경변수 확인 ===");
+  console.log("TOKEN 존재 여부:", !!TOKEN);
+  console.log("TOKEN 길이:", TOKEN.length);
+  console.log("TOKEN 앞 10글자:", TOKEN.slice(0, 10));
+  console.log("CLIENT_ID:", CLIENT_ID);
+  console.log("GUILD_ID:", GUILD_ID);
+
+  if (/\s/.test(TOKEN)) {
+    console.log("⚠️ TOKEN 안에 공백/줄바꿈이 포함되어 있을 수 있습니다.");
   }
 }
 
@@ -320,7 +344,10 @@ async function reply(interaction, options) {
 async function requireGuild(interaction) {
   const guild = interaction.guild;
   if (!guild) {
-    await reply(interaction, { content: "❌ 길드에서만 사용 가능합니다.", ephemeral: true });
+    await reply(interaction, {
+      content: "❌ 길드에서만 사용 가능합니다.",
+      ephemeral: true,
+    });
     return null;
   }
   return guild;
@@ -346,6 +373,7 @@ async function syncDeptRoles(member, dept, guild) {
   const rolesToRemove = currentManagedRoles.filter(
     (role) => !desiredRoleIds.has(String(role.id))
   );
+
   if (rolesToRemove.size > 0) {
     await member.roles.remove([...rolesToRemove.values()], "조직 편제 역할 교체");
   }
@@ -373,7 +401,10 @@ function memberHasAnyExcludedRole(member) {
 async function bulkAddByRankRole(interaction, guild, dept) {
   const userLevel = await getExecutorLevel(interaction, guild);
   if (userLevel < 2) {
-    await reply(interaction, { content: "❌ 사령본부 이상만 사용 가능합니다.", ephemeral: true });
+    await reply(interaction, {
+      content: "❌ 사령본부 이상만 사용 가능합니다.",
+      ephemeral: true,
+    });
     return;
   }
 
@@ -462,6 +493,9 @@ async function bulkAddByRankRole(interaction, guild, dept) {
   });
 }
 
+/* =========================
+   임베드
+========================= */
 function formatMemberLine(member, nickname, highlightUserId = null) {
   const base = `${member} / ${nickname}`;
   return highlightUserId === member.id ? `**${base} ⭐**` : base;
@@ -643,18 +677,29 @@ function buildNoticeButtons() {
   );
 }
 
+/* =========================
+   공지
+========================= */
 async function fetchNoticeMessage(client) {
   const notice = store.공지 || {};
   const messageId = notice.messageId;
   const channelId = notice.channelId;
 
-  if (!messageId || !channelId) return { channel: null, message: null, errorCode: null };
+  if (!messageId || !channelId) {
+    return { channel: null, message: null, errorCode: null };
+  }
 
   try {
     const channel = await client.channels.fetch(String(channelId));
+
     if (
       !channel ||
-      ![ChannelType.GuildText, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread].includes(channel.type)
+      ![
+        ChannelType.GuildText,
+        ChannelType.PublicThread,
+        ChannelType.PrivateThread,
+        ChannelType.AnnouncementThread,
+      ].includes(channel.type)
     ) {
       return { channel, message: null, errorCode: null };
     }
@@ -729,12 +774,18 @@ async function assignHqPosition(interaction, position, target, deniedMessage) {
   }
 }
 
+/* =========================
+   클라이언트
+========================= */
 validateEnv();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
 
+/* =========================
+   슬래시 명령어
+========================= */
 const commands = [
   new SlashCommandBuilder()
     .setName("편제추가")
@@ -799,7 +850,11 @@ const commands = [
         )
     )
     .addStringOption((option) =>
-      option.setName("직책").setDescription("직책 선택").setRequired(true).setAutocomplete(true)
+      option
+        .setName("직책")
+        .setDescription("직책 선택")
+        .setRequired(true)
+        .setAutocomplete(true)
     )
     .addUserOption((option) =>
       option.setName("대상").setDescription("배치할 멤버").setRequired(true)
@@ -866,10 +921,13 @@ client.once("ready", async () => {
     });
     console.log("✅ 길드 슬래시 명령어 등록 완료");
   } catch (err) {
-    console.log(`❌ 슬래시 명령어 등록 실패: ${err}`);
+    console.log("❌ 슬래시 명령어 등록 실패:", err);
   }
 });
 
+/* =========================
+   인터랙션 처리
+========================= */
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
@@ -925,14 +983,20 @@ client.on("interactionCreate", async (interaction) => {
       const target = await safeFetchMember(guild, targetUser.id);
 
       if (!target) {
-        await reply(interaction, { content: "❌ 대상을 찾을 수 없습니다.", ephemeral: true });
+        await reply(interaction, {
+          content: "❌ 대상을 찾을 수 없습니다.",
+          ephemeral: true,
+        });
         return;
       }
 
       const userLevel = await getExecutorLevel(interaction, guild);
 
       if (userLevel === 0) {
-        await reply(interaction, { content: "❌ 권한이 없습니다.", ephemeral: true });
+        await reply(interaction, {
+          content: "❌ 권한이 없습니다.",
+          ephemeral: true,
+        });
         return;
       }
 
@@ -945,7 +1009,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (!LIMITS[dept]) {
-        await reply(interaction, { content: "❌ 잘못된 부서입니다.", ephemeral: true });
+        await reply(interaction, {
+          content: "❌ 잘못된 부서입니다.",
+          ephemeral: true,
+        });
         return;
       }
 
@@ -955,7 +1022,10 @@ client.on("interactionCreate", async (interaction) => {
       );
 
       if (!alreadyInSameDept && getActiveDeptMembers(guild, dept).length >= LIMITS[dept]) {
-        await reply(interaction, { content: "❌ 최대 인원 초과", ephemeral: true });
+        await reply(interaction, {
+          content: "❌ 최대 인원 초과",
+          ephemeral: true,
+        });
         return;
       }
 
@@ -1001,7 +1071,10 @@ client.on("interactionCreate", async (interaction) => {
       const target = await safeFetchMember(guild, targetUser.id);
 
       if (!target) {
-        await reply(interaction, { content: "❌ 대상을 찾을 수 없습니다.", ephemeral: true });
+        await reply(interaction, {
+          content: "❌ 대상을 찾을 수 없습니다.",
+          ephemeral: true,
+        });
         return;
       }
 
@@ -1021,7 +1094,10 @@ client.on("interactionCreate", async (interaction) => {
       const target = await safeFetchMember(guild, targetUser.id);
 
       if (!target) {
-        await reply(interaction, { content: "❌ 대상을 찾을 수 없습니다.", ephemeral: true });
+        await reply(interaction, {
+          content: "❌ 대상을 찾을 수 없습니다.",
+          ephemeral: true,
+        });
         return;
       }
 
@@ -1047,7 +1123,10 @@ client.on("interactionCreate", async (interaction) => {
       const userLevel = await getExecutorLevel(interaction, guild);
 
       if (userLevel < 2) {
-        await reply(interaction, { content: "❌ 사령본부 이상만 사용 가능합니다.", ephemeral: true });
+        await reply(interaction, {
+          content: "❌ 사령본부 이상만 사용 가능합니다.",
+          ephemeral: true,
+        });
         return;
       }
 
@@ -1190,7 +1269,13 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+/* =========================
+   로그인
+========================= */
 client.login(TOKEN).catch((err) => {
-  console.log(`❌ 시작 실패: ${err}`);
+  console.log("❌ 시작 실패:", err);
+  console.log("TOKEN 존재 여부:", !!TOKEN);
+  console.log("TOKEN 길이:", TOKEN ? TOKEN.length : 0);
+  console.log("TOKEN 앞 10글자:", TOKEN ? TOKEN.slice(0, 10) : "없음");
   process.exit(1);
 });
