@@ -66,17 +66,6 @@ const DEPT_ASSIGN_ROLES = {
   ],
 };
 
-const AUTO_ADD_EXCLUDED_ROLE_IDS = new Set([
-  "1484936041625423984",
-  "1484585221113249822",
-  "1458739699551174666",
-  "1486635044058435684",
-  "1487715425801211924",
-  "1486399717226319953",
-  "1475031533378211862",
-  "1488511399540953291",
-]);
-
 const BULK_ADD_ROLE_IDS = {
   소령: "1452598334572462083",
   중령: "1452598180947562529",
@@ -390,12 +379,6 @@ async function syncDeptRoles(member, dept, guild) {
   }
 }
 
-function memberHasAnyExcludedRole(member) {
-  return member.roles.cache.some((role) =>
-    AUTO_ADD_EXCLUDED_ROLE_IDS.has(String(role.id))
-  );
-}
-
 async function bulkAddByRankRole(interaction, guild, dept) {
   const userLevel = await getExecutorLevel(interaction, guild);
   if (userLevel < 2) {
@@ -418,19 +401,12 @@ async function bulkAddByRankRole(interaction, guild, dept) {
   }
 
   const candidates = [];
-  const excludedMembers = [];
   const overLimitSkipped = [];
   const addedMembers = [];
   const updatedMembers = [];
 
   for (const member of targetRole.members.values()) {
     if (member.user.bot) continue;
-
-    if (memberHasAnyExcludedRole(member)) {
-      excludedMembers.push(member);
-      continue;
-    }
-
     candidates.push(member);
   }
 
@@ -471,14 +447,8 @@ async function bulkAddByRankRole(interaction, guild, dept) {
     `대상 역할 인원: ${candidates.length}명`,
     `신규 추가: ${addedMembers.length}명`,
     `기존 갱신: ${updatedMembers.length}명`,
-    `제외 역할로 스킵: ${excludedMembers.length}명`,
     `정원 초과로 스킵: ${overLimitSkipped.length}명`,
   ];
-
-  if (excludedMembers.length > 0) {
-    lines.push("", "**제외 역할로 스킵된 인원**");
-    lines.push(excludedMembers.slice(0, 20).map((m) => m.toString()).join("\n"));
-  }
 
   if (overLimitSkipped.length > 0) {
     lines.push("", "**정원 초과로 스킵된 인원**");
@@ -1163,6 +1133,13 @@ client.on("interactionCreate", async (interaction) => {
           ephemeral: true,
         });
         return;
+      }
+
+      const existing = await fetchNoticeMessage(client);
+      if (existing.message) {
+        try {
+          await existing.message.delete().catch(() => {});
+        } catch {}
       }
 
       const msg = await channel.send({
