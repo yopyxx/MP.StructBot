@@ -66,7 +66,6 @@ const DEPT_ASSIGN_ROLES = {
   ],
 };
 
-// 자동 편제 추가 제외 역할
 const AUTO_ADD_EXCLUDED_ROLE_IDS = new Set([
   "1484936041625423984",
   "1484585221113249822",
@@ -78,7 +77,6 @@ const AUTO_ADD_EXCLUDED_ROLE_IDS = new Set([
   "1488511399540953291",
 ]);
 
-// 자동 편제 추가 대상 계급 역할
 const BULK_ADD_ROLE_IDS = {
   소령: "1452598334572462083",
   중령: "1452598180947562529",
@@ -162,9 +160,9 @@ const TITLE_ICON_URL =
   "https://cdn.discordapp.com/attachments/1487848573650468996/1487848651916054809/7b6320370920beaf.png?ex=69caa289&is=69c95109&hm=3058ec090c27eafb9e2760781ff6f641a918a53b122a3e30083c6301c2e6cb92";
 
 const RANK_EMBED_CONFIG = [
-  ["대령", "지휘단장", ORG_EMOJIS.colonel],
-  ["중령", "지휘장교", ORG_EMOJIS.ltcolonel],
-  ["소령", "지휘장교", ORG_EMOJIS.major],
+  ["대령", "지휘단장", ORG_EMOJIS.colonel, 0xc0392b],
+  ["중령", "지휘장교", ORG_EMOJIS.ltcolonel, 0x8e44ad],
+  ["소령", "지휘장교", ORG_EMOJIS.major, 0x2980b9],
 ];
 
 const EMBED1_SECTIONS = [
@@ -548,27 +546,24 @@ function buildSectionDescription(guild, sections, highlightUserId = null) {
   return lines.join("\n");
 }
 
-function buildRankRosterEmbed(guild, highlightUserId = null) {
-  const embed = new EmbedBuilder()
-    .setTitle("지휘단장 / 지휘장교 편제")
-    .setColor(0x5865f2);
+function buildSingleRankEmbed(guild, dept, label, emoji, color, highlightUserId = null) {
+  const activeMembers = getActiveDeptMembers(guild, dept);
+  const members = buildRankLines(guild, dept, highlightUserId);
 
-  for (const [dept, label, emoji] of RANK_EMBED_CONFIG) {
-    const activeMembers = getActiveDeptMembers(guild, dept);
-    const members = buildRankLines(guild, dept, highlightUserId);
-
-    embed.addFields({
-      name: `${emoji} | ${label} (${dept} : ${activeMembers.length}/${LIMITS[dept]}명)`,
-      value: members.length ? members.join("\n") : "없음",
-      inline: false,
-    });
-  }
-
-  embed.setImage(DIVIDER_IMAGE_URL);
-  return embed;
+  return new EmbedBuilder()
+    .setTitle(`${emoji} | ${label} (${dept} : ${activeMembers.length}/${LIMITS[dept]}명)`)
+    .setDescription(members.length ? members.join("\n") : "없음")
+    .setColor(color)
+    .setImage(DIVIDER_IMAGE_URL);
 }
 
-function buildEmbeds(guild, highlightUserId = null) {
+function buildDetailEmbeds(guild, highlightUserId = null) {
+  return RANK_EMBED_CONFIG.map(([dept, label, emoji, color]) =>
+    buildSingleRankEmbed(guild, dept, label, emoji, color, highlightUserId)
+  );
+}
+
+function buildMainEmbeds(guild, highlightUserId = null) {
   const embed1 = new EmbedBuilder()
     .setDescription(buildSectionDescription(guild, EMBED1_SECTIONS, highlightUserId))
     .setColor(0x1f3a93)
@@ -580,17 +575,7 @@ function buildEmbeds(guild, highlightUserId = null) {
     .setColor(0x2ecc71)
     .setImage(DIVIDER_IMAGE_URL);
 
-  const embed3 = buildRankRosterEmbed(guild, highlightUserId);
-
-  return [embed1, embed2, embed3];
-}
-
-function buildMainEmbeds(guild, highlightUserId = null) {
-  return buildEmbeds(guild, highlightUserId).slice(0, 2);
-}
-
-function buildDetailEmbed(guild, highlightUserId = null) {
-  return buildEmbeds(guild, highlightUserId)[2];
+  return [embed1, embed2];
 }
 
 function buildRankSystemEmbed() {
@@ -956,7 +941,7 @@ client.on("interactionCreate", async (interaction) => {
         if (!guild) return;
 
         await reply(interaction, {
-          embeds: [buildDetailEmbed(guild, interaction.user.id)],
+          embeds: buildDetailEmbeds(guild, interaction.user.id),
           ephemeral: true,
         });
         return;
@@ -1162,7 +1147,7 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       await reply(interaction, {
-        embeds: buildEmbeds(guild, targetUser.id),
+        embeds: [...buildMainEmbeds(guild, targetUser.id), ...buildDetailEmbeds(guild, targetUser.id)],
         ephemeral: true,
       });
       return;
