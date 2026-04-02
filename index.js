@@ -40,42 +40,37 @@ const LEVEL_ROLES = {
 
 const DEPT_ASSIGN_ROLES = {
   소령: [
-    "1452598334572462083", // 소령
-    "1410595975873171538", // 지휘장교
-    "1448215361659867136", // 수뇌부
-    "1484955943237193909", // 인사행정단
-    "1487030918794313758", // 간부
-    "1386716926528585857", // 장교
+    "1489047008542195801",
+    "1489047009288650898",
+    "1489047010722975894",
+    "1489047025419813006",
   ],
   중령: [
-    "1452598180947562529", // 중령
-    "1410595975873171538", // 지휘장교
-    "1448215361659867136", // 수뇌부
-    "1484955943237193909", // 인사행정단
-    "1487030918794313758", // 간부
-    "1386716926528585857", // 장교
+    "1489047007334105168",
+    "1489047009288650898",
+    "1489047010722975894",
+    "1489047025419813006",
   ],
   대령: [
-    "1449732731364966490", // 지휘단장
-    "1484576766399086752", // 군수단
-    "1452598529301414041", // 대령
-    "1410595975873171538", // 지휘장교
-    "1448215361659867136", // 수뇌부
-    "1487030918794313758", // 간부
-    "1386716926528585857", // 장교
+    "1489047006008574013",
+    "1489047002447609999",
+    "1489047009288650898",
+    "1489047010722975894",
+    "1489047025419813006",
   ],
 };
 
 const BULK_ADD_ROLE_IDS = {
-  소령: "1452598334572462083",
-  중령: "1452598180947562529",
-  대령: "1452598529301414041",
+  소령: "1489047008542195801",
+  중령: "1489047007334105168",
+  대령: "1489047006008574013",
 };
 
 const COMMAND_HQ_POSITIONS = [
   "군사경찰 사령관",
   "군사경찰 부사령관",
   "군사경찰 참모장",
+  "군사경찰 주임원사",
 ];
 
 const UNIT_COMMAND_POSITIONS = {
@@ -112,6 +107,7 @@ const HQ_EMOJIS = {
   "군사경찰 사령관": "<:General:1478002425830047754>",
   "군사경찰 부사령관": "<:LieutenantGeneral:1480151141969956944>",
   "군사경찰 참모장": "<:LieutenantGeneral:1480151141969956944>",
+  "군사경찰 주임원사": "<:sergeantmajor:1487494727891685467>",
   인사행정단장: "<:brigadier:1478002619577405500>",
   근무지원단장: "<:brigadier:1478002619577405500>",
   인사처리단장: "<:brigadier:1478002619577405500>",
@@ -155,7 +151,15 @@ const RANK_EMBED_CONFIG = [
 ];
 
 const EMBED1_SECTIONS = [
-  ["**[+] 사령본부**", ["군사경찰 사령관", "군사경찰 부사령관", "군사경찰 참모장"]],
+  [
+    "**[+] 사령본부**",
+    [
+      "군사경찰 사령관",
+      "군사경찰 부사령관",
+      "군사경찰 참모장",
+      "군사경찰 주임원사",
+    ],
+  ],
   ["**[+] 단본부**", ["인사행정단장", "근무지원단장", "인사처리단장", "군수단장"]],
 ];
 
@@ -177,8 +181,6 @@ const EMBED2_SECTIONS = [
     ["군수단장", "군수부단장", "군수참모장", "군수주임원사"],
   ],
 ];
-
-const MANAGED_DEPT_ROLE_IDS = new Set(Object.values(DEPT_ASSIGN_ROLES).flat());
 
 /* =========================
    데이터
@@ -352,19 +354,6 @@ async function persistAndRefresh(guild) {
 
 async function syncDeptRoles(member, dept, guild) {
   const desiredRoleIds = new Set(DEPT_ASSIGN_ROLES[dept] || []);
-
-  const currentManagedRoles = member.roles.cache.filter((role) =>
-    MANAGED_DEPT_ROLE_IDS.has(String(role.id))
-  );
-
-  const rolesToRemove = currentManagedRoles.filter(
-    (role) => !desiredRoleIds.has(String(role.id))
-  );
-
-  if (rolesToRemove.size > 0) {
-    await member.roles.remove([...rolesToRemove.values()], "조직 편제 역할 교체");
-  }
-
   const currentRoleIds = new Set(member.roles.cache.map((role) => String(role.id)));
   const rolesToAdd = [];
 
@@ -375,7 +364,7 @@ async function syncDeptRoles(member, dept, guild) {
   }
 
   if (rolesToAdd.length > 0) {
-    await member.roles.add(rolesToAdd, "조직 편제 역할 부여");
+    await member.roles.add(rolesToAdd, "조직 편제 역할 추가");
   }
 }
 
@@ -390,24 +379,16 @@ async function bulkAddByRankRole(interaction, guild, dept) {
   }
 
   const targetRoleId = BULK_ADD_ROLE_IDS[dept];
-  const targetRole = guild.roles.cache.get(targetRoleId);
-
-  if (!targetRole) {
-    await reply(interaction, {
-      content: `❌ ${dept} 대상 역할을 찾을 수 없습니다.`,
-      ephemeral: true,
-    });
-    return;
-  }
-
   const candidates = [];
   const overLimitSkipped = [];
   const addedMembers = [];
   const updatedMembers = [];
 
-  for (const member of targetRole.members.values()) {
+  for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
-    candidates.push(member);
+    if (member.roles.cache.has(targetRoleId)) {
+      candidates.push(member);
+    }
   }
 
   for (const member of candidates) {
@@ -991,7 +972,7 @@ client.on("interactionCreate", async (interaction) => {
         await persistAndRefresh(guild);
 
         await reply(interaction, {
-          content: `✅ ${target} 님을 ${dept} 편제에 등록했고, 관련 계급 역할만 교체했습니다.`,
+          content: `✅ ${target} 님을 ${dept} 편제에 등록했고, 관련 역할을 추가했습니다.`,
           ephemeral: true,
         });
       } catch (err) {
@@ -1117,7 +1098,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       await reply(interaction, {
-        embeds: [...buildMainEmbeds(guild, targetUser.id), ...buildDetailEmbeds(guild, targetUser.id)],
+        embeds: [
+          ...buildMainEmbeds(guild, targetUser.id),
+          ...buildDetailEmbeds(guild, targetUser.id),
+        ],
         ephemeral: true,
       });
       return;
