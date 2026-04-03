@@ -33,9 +33,14 @@ const SUPER_ADMIN_IDS = new Set([
 ]);
 
 const LEVEL_ROLES = {
-  1: ["1484576766399086752"],
-  2: ["1488035122585538651"],
-  3: ["1386716926553882720"],
+  1: ["1489047011767353554"],
+  2: [
+    "1489047000229089342",
+    "1489365838409760808",
+    "1489365379049328872",
+    "1489260855286825050",
+  ],
+  3: ["1488117787233751082"],
 };
 
 const DEPT_ASSIGN_ROLES = {
@@ -962,7 +967,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (userLevel === 1 && dept !== "소령") {
         await reply(interaction, {
-          content: "❌ 대령 권한은 소령 편제만 추가 가능합니다.",
+          content: "❌ Level 1 권한은 소령 편제만 추가 가능합니다.",
           ephemeral: true,
         });
         return;
