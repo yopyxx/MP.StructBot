@@ -379,61 +379,85 @@ async function bulkAddByRankRole(interaction, guild, dept) {
   }
 
   const targetRoleId = BULK_ADD_ROLE_IDS[dept];
-  const candidates = [];
-  const overLimitSkipped = [];
+  if (!targetRoleId) {
+    await reply(interaction, {
+      content: "❌ 해당 편제의 기준 역할이 설정되어 있지 않습니다.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const existingDeptEntries = Array.isArray(store.편제[dept]) ? [...store.편제[dept]] : [];
+  const existingDeptIds = new Set(existingDeptEntries.map((entry) => String(entry.id)));
+
+  const validMembers = [];
+  const removedNotInGuild = [];
+  const removedNoRankRole = [];
   const addedMembers = [];
-  const updatedMembers = [];
+  const keptMembers = [];
 
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
-    if (member.roles.cache.has(targetRoleId)) {
-      candidates.push(member);
+    if (!member.roles.cache.has(targetRoleId)) continue;
+    validMembers.push(member);
+  }
+
+  for (const entry of existingDeptEntries) {
+    const member = guild.members.cache.get(String(entry.id));
+
+    if (!member) {
+      removedNotInGuild.push(entry);
+      continue;
+    }
+
+    if (!member.roles.cache.has(targetRoleId)) {
+      removedNoRankRole.push(member);
+      continue;
     }
   }
 
-  for (const member of candidates) {
-    const alreadyInSameDept = store.편제[dept].some(
-      (entry) => String(entry.id) === String(member.id)
-    );
+  store.편제[dept] = [];
 
-    if (alreadyInSameDept) {
-      removeUserFromOrganization(member.id);
-      store.편제[dept].push({
-        id: String(member.id),
-        nickname: member.displayName,
-      });
-      await syncDeptRoles(member, dept, guild);
-      updatedMembers.push(member);
-      continue;
-    }
-
-    if (getActiveDeptMembers(guild, dept).length >= LIMITS[dept]) {
-      overLimitSkipped.push(member);
-      continue;
-    }
-
-    removeUserFromOrganization(member.id);
+  for (const member of validMembers) {
     store.편제[dept].push({
       id: String(member.id),
       nickname: member.displayName,
     });
+
     await syncDeptRoles(member, dept, guild);
-    addedMembers.push(member);
+
+    if (existingDeptIds.has(String(member.id))) {
+      keptMembers.push(member);
+    } else {
+      addedMembers.push(member);
+    }
   }
 
   await persistAndRefresh(guild);
 
   const lines = [
-    `✅ ${dept} 편제 전체추가 완료`,
-    `대상 역할 인원: ${candidates.length}명`,
+    `✅ ${dept} 편제 역할 기준 동기화 완료`,
+    `기준 역할: <@&${targetRoleId}>`,
+    `최종 편제 반영: ${validMembers.length}명`,
     `신규 추가: ${addedMembers.length}명`,
-    `기존 갱신: ${updatedMembers.length}명`,
-    `정원 초과로 스킵: ${overLimitSkipped.length}명`,
+    `유지/갱신: ${keptMembers.length}명`,
+    `서버 미존재로 제거: ${removedNotInGuild.length}명`,
+    `역할 미보유로 제거: ${removedNoRankRole.length}명`,
   ];
 
-  if (overLimitSkipped.length > 0) {
-    lines.push("", "**정원 초과로 스킵된 인원**");
-    lines.push(overLimitSkipped.slice(0, 20).map((m) => m.toString()).join("\n"));
+  if (removedNotInGuild.length > 0) {
+    lines.push("", "**서버에 없어 제거된 인원**");
+    lines.push(
+      removedNotInGuild
+        .slice(0, 20)
+        .map((entry) => `<@${entry.id}> / ${entry.nickname || "닉네임 없음"}`)
+        .join("\n")
+    );
+  }
+
+  if (removedNoRankRole.length > 0) {
+    lines.push("", "**해당 계급 역할이 없어 제거된 인원**");
+    lines.push(removedNoRankRole.slice(0, 20).map((m) => `${m}`).join("\n"));
   }
 
   await reply(interaction, {
@@ -746,15 +770,15 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("소령편제전체추가")
-    .setDescription("소령 역할 보유 인원을 전부 소령 편제에 추가합니다."),
+    .setDescription("소령 역할 보유 인원을 기준으로 소령 편제를 동기화합니다."),
 
   new SlashCommandBuilder()
     .setName("중령편제전체추가")
-    .setDescription("중령 역할 보유 인원을 전부 중령 편제에 추가합니다."),
+    .setDescription("중령 역할 보유 인원을 기준으로 중령 편제를 동기화합니다."),
 
   new SlashCommandBuilder()
     .setName("대령편제전체추가")
-    .setDescription("대령 역할 보유 인원을 전부 대령 편제에 추가합니다."),
+    .setDescription("대령 역할 보유 인원을 기준으로 대령 편제를 동기화합니다."),
 
   new SlashCommandBuilder()
     .setName("사령본부추가")
