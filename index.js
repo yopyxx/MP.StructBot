@@ -261,6 +261,16 @@ function validateEnv() {
   }
 }
 
+function sanitizeNickname(raw) {
+  if (!raw) return "닉네임 없음";
+
+  return String(raw)
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/\([^\)]*\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function getUserLevel(member) {
   if (!member) return 0;
   if (SUPER_ADMIN_IDS.has(String(member.id))) return 999;
@@ -426,7 +436,7 @@ async function bulkAddByRankRole(interaction, guild, dept) {
   for (const member of validMembers) {
     store.편제[dept].push({
       id: String(member.id),
-      nickname: member.displayName,
+      nickname: sanitizeNickname(member.displayName),
     });
 
     await syncDeptRoles(member, dept, guild);
@@ -455,14 +465,19 @@ async function bulkAddByRankRole(interaction, guild, dept) {
     lines.push(
       removedNotInGuild
         .slice(0, 20)
-        .map((entry) => `<@${entry.id}> / ${entry.nickname || "닉네임 없음"}`)
+        .map((entry) => `<@${entry.id}> / ${sanitizeNickname(entry.nickname || "닉네임 없음")}`)
         .join("\n")
     );
   }
 
   if (removedNoRankRole.length > 0) {
     lines.push("", "**해당 계급 역할이 없어 제거된 인원**");
-    lines.push(removedNoRankRole.slice(0, 20).map((m) => `${m}`).join("\n"));
+    lines.push(
+      removedNoRankRole
+        .slice(0, 20)
+        .map((m) => `<@${m.id}> / ${sanitizeNickname(m.displayName)}`)
+        .join("\n")
+    );
   }
 
   await reply(interaction, {
@@ -475,12 +490,15 @@ async function bulkAddByRankRole(interaction, guild, dept) {
    임베드
 ========================= */
 function formatMemberLine(member, nickname, highlightUserId = null) {
-  const base = `${member} / ${nickname}`;
+  const cleanNickname = sanitizeNickname(nickname || member.displayName);
+  const base = `${member} / ${cleanNickname}`;
   return highlightUserId === member.id ? `**${base} ⭐**` : base;
 }
 
 function formatPositionMember(member, highlightUserId = null) {
-  return highlightUserId === member.id ? `**${member} ⭐**` : `${member}`;
+  const cleanNickname = sanitizeNickname(member.displayName);
+  const base = `${member} / ${cleanNickname}`;
+  return highlightUserId === member.id ? `**${base} ⭐**` : base;
 }
 
 function formatRoleMentions(guild, roleIds) {
@@ -508,7 +526,13 @@ function buildRankLines(guild, dept, highlightUserId = null) {
   for (const memberData of getActiveDeptMembers(guild, dept)) {
     const member = guild.members.cache.get(String(memberData.id));
     if (member) {
-      lines.push(formatMemberLine(member, memberData.nickname, highlightUserId));
+      lines.push(
+        formatMemberLine(
+          member,
+          sanitizeNickname(member.displayName || memberData.nickname),
+          highlightUserId
+        )
+      );
     }
   }
   return lines;
@@ -582,7 +606,9 @@ function buildRankSystemEmbed() {
 
 function buildPermissionEmbed(guild) {
   const formatMemberList = (members) =>
-    members.length ? members.map((m) => m.toString()).join("\n") : "없음";
+    members.length
+      ? members.map((m) => `<@${m.id}> / ${sanitizeNickname(m.displayName)}`).join("\n")
+      : "없음";
 
   const superAdmins = [...SUPER_ADMIN_IDS]
     .map((id) => guild.members.cache.get(id))
@@ -720,7 +746,7 @@ async function assignHqPosition(interaction, position, target, deniedMessage) {
     store.편제.사령본부.push({
       position,
       id: String(target.id),
-      nickname: target.displayName,
+      nickname: sanitizeNickname(target.displayName),
     });
 
     await persistAndRefresh(guild);
@@ -996,7 +1022,10 @@ client.on("interactionCreate", async (interaction) => {
 
       try {
         removeUserFromOrganization(target.id);
-        store.편제[dept].push({ id: String(target.id), nickname });
+        store.편제[dept].push({
+          id: String(target.id),
+          nickname: sanitizeNickname(nickname),
+        });
         await syncDeptRoles(target, dept, guild);
         await persistAndRefresh(guild);
 
