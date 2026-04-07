@@ -32,6 +32,12 @@ const SUPER_ADMIN_IDS = new Set([
   "1369378060557877480",
 ]);
 
+// 이 역할이 있으면 모든 명령어 사용 가능
+const ADMIN_BYPASS_ROLE_IDS = new Set([
+  "1489046974689972295",
+  "1489046988438634656",
+]);
+
 const LEVEL_ROLES = {
   1: ["1489047011767353554"],
   2: [
@@ -262,6 +268,10 @@ function getUserLevel(member) {
   if (SUPER_ADMIN_IDS.has(String(member.id))) return 999;
 
   const roleIds = new Set(member.roles.cache.map((r) => String(r.id)));
+
+  if ([...ADMIN_BYPASS_ROLE_IDS].some((roleId) => roleIds.has(roleId))) {
+    return 999;
+  }
 
   for (const level of [3, 2, 1]) {
     if ((LEVEL_ROLES[level] || []).some((roleId) => roleIds.has(roleId))) {
@@ -600,6 +610,10 @@ function buildPermissionEmbed(guild) {
     .map((id) => guild.members.cache.get(id))
     .filter(Boolean);
 
+  const bypassRoleMembers = guild.members.cache.filter((member) =>
+    member.roles.cache.some((role) => ADMIN_BYPASS_ROLE_IDS.has(String(role.id)))
+  );
+
   const levelMembers = {};
   for (const [level, roleIds] of Object.entries(LEVEL_ROLES)) {
     const matched = guild.members.cache.filter((member) =>
@@ -615,6 +629,13 @@ function buildPermissionEmbed(guild) {
       {
         name: "최상위 관리자",
         value: formatMemberList(superAdmins),
+        inline: false,
+      },
+      {
+        name: "전체 명령어 사용 가능 역할",
+        value: `역할: ${formatRoleMentions(guild, [...ADMIN_BYPASS_ROLE_IDS])}\n${formatMemberList(
+          [...bypassRoleMembers.values()]
+        )}`,
         inline: false,
       },
       {
